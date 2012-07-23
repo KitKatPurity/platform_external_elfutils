@@ -44,6 +44,7 @@
 
 /* no internalization */
 #define gettext(x)      (x)
+#define dgettext(x, y)	(y)
 
 /* _mempcpy and mempcpy */
 #ifndef __mempcpy
@@ -80,6 +81,6 @@ static inline char *stpcpy(char *dst, const char *src)
 }
 
 /* forward declarations */
-char * dgettext (const char * domainname, const char * msgid);
+/* char * dgettext (const char * domainname, const char * msgid); */
 
 #endif /* ANDROID_FIXUP_H */
