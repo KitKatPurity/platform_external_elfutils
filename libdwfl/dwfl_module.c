@@ -129,6 +129,21 @@ dwfl_report_begin (Dwfl *dwfl)
 }
 INTDEF (dwfl_report_begin)
 
+static inline Dwfl_Module *use (Dwfl *dwfl, Dwfl_Module **tailp, Dwfl_Module **prevp, Dwfl_Module *mod)
+{
+  mod->next = *tailp;
+  *tailp = mod;
+
+  if (unlikely (dwfl->lookup_module != NULL))
+    {
+	free (dwfl->lookup_module);
+	dwfl->lookup_module = NULL;
+    }
+
+  return mod;
+}
+
+
 /* Report that a module called NAME spans addresses [START, END).
    Returns the module handle, either existing or newly allocated,
    or returns a null pointer for an allocation error.  */
@@ -137,20 +152,6 @@ dwfl_report_module (Dwfl *dwfl, const char *name,
 		    GElf_Addr start, GElf_Addr end)
 {
   Dwfl_Module **tailp = &dwfl->modulelist, **prevp = tailp;
-
-  inline Dwfl_Module *use (Dwfl_Module *mod)
-  {
-    mod->next = *tailp;
-    *tailp = mod;
-
-    if (unlikely (dwfl->lookup_module != NULL))
-      {
-	free (dwfl->lookup_module);
-	dwfl->lookup_module = NULL;
-      }
-
-    return mod;
-  }
 
   for (Dwfl_Module *m = *prevp; m != NULL; m = *(prevp = &m->next))
     {
@@ -161,7 +162,7 @@ dwfl_report_module (Dwfl *dwfl, const char *name,
 	     after the last module already reported.  */
 	  *prevp = m->next;
 	  m->gc = false;
-	  return use (m);
+	  return use (dwfl, tailp, prevp, m);
 	}
 
       if (! m->gc)
@@ -185,7 +186,7 @@ dwfl_report_module (Dwfl *dwfl, const char *name,
   mod->high_addr = end;
   mod->dwfl = dwfl;
 
-  return use (mod);
+  return use (dwfl, tailp, prevp, mod);
 }
 INTDEF (dwfl_report_module)
 

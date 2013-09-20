@@ -279,31 +279,9 @@ resolve_symbol (Dwfl_Module *referer, struct reloc_symtab_cache *symtab,
   return DWFL_E_RELUNDEF;
 }
 
-static Dwfl_Error
-relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
-		  size_t shstrndx, struct reloc_symtab_cache *reloc_symtab,
-		  Elf_Scn *scn, GElf_Shdr *shdr,
-		  Elf_Scn *tscn, bool debugscn, bool partial)
-{
-  /* First, fetch the name of the section these relocations apply to.  */
-  GElf_Shdr tshdr_mem;
-  GElf_Shdr *tshdr = gelf_getshdr (tscn, &tshdr_mem);
-  const char *tname = elf_strptr (relocated, shstrndx, tshdr->sh_name);
-  if (tname == NULL)
-    return DWFL_E_LIBELF;
-
-  if (debugscn && ! ebl_debugscn_p (mod->ebl, tname))
-    /* This relocation section is not for a debugging section.
-       Nothing to do here.  */
-    return DWFL_E_NOERROR;
-
-  /* Fetch the section data that needs the relocations applied.  */
-  Elf_Data *tdata = elf_rawdata (tscn, NULL);
-  if (tdata == NULL)
-    return DWFL_E_LIBELF;
-
   /* Apply one relocation.  Returns true for any invalid data.  */
-  Dwfl_Error relocate (GElf_Addr offset, const GElf_Sxword *addend,
+  static Dwfl_Error relocate (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr, struct reloc_symtab_cache *reloc_symtab, Elf_Data *tdata,
+                       GElf_Addr offset, const GElf_Sxword *addend,
 		       int rtype, int symndx)
   {
     /* First see if this is a reloc we can handle.
@@ -432,6 +410,41 @@ relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
     return DWFL_E_NOERROR;
   }
 
+  static inline void check_badreltype (Dwfl_Module *mod, bool *first_badreltype, Dwfl_Error *result)
+  {
+    if (*first_badreltype)
+      {
+	*first_badreltype = false;
+	if (ebl_get_elfmachine (mod->ebl) == EM_NONE)
+	  /* This might be because ebl_openbackend failed to find
+	     any libebl_CPU.so library.  Diagnose that clearly.  */
+	  *result = DWFL_E_UNKNOWN_MACHINE;
+      }
+  } 
+
+static Dwfl_Error
+relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
+		  size_t shstrndx, struct reloc_symtab_cache *reloc_symtab,
+		  Elf_Scn *scn, GElf_Shdr *shdr,
+		  Elf_Scn *tscn, bool debugscn, bool partial)
+{
+  /* First, fetch the name of the section these relocations apply to.  */
+  GElf_Shdr tshdr_mem;
+  GElf_Shdr *tshdr = gelf_getshdr (tscn, &tshdr_mem);
+  const char *tname = elf_strptr (relocated, shstrndx, tshdr->sh_name);
+  if (tname == NULL)
+    return DWFL_E_LIBELF;
+
+  if (debugscn && ! ebl_debugscn_p (mod->ebl, tname))
+    /* This relocation section is not for a debugging section.
+       Nothing to do here.  */
+    return DWFL_E_NOERROR;
+
+  /* Fetch the section data that needs the relocations applied.  */
+  Elf_Data *tdata = elf_rawdata (tscn, NULL);
+  if (tdata == NULL)
+    return DWFL_E_LIBELF;
+
   /* Fetch the relocation section and apply each reloc in it.  */
   Elf_Data *reldata = elf_getdata (scn, NULL);
   if (reldata == NULL)
@@ -439,17 +452,6 @@ relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
 
   Dwfl_Error result = DWFL_E_NOERROR;
   bool first_badreltype = true;
-  inline void check_badreltype (void)
-  {
-    if (first_badreltype)
-      {
-	first_badreltype = false;
-	if (ebl_get_elfmachine (mod->ebl) == EM_NONE)
-	  /* This might be because ebl_openbackend failed to find
-	     any libebl_CPU.so library.  Diagnose that clearly.  */
-	  result = DWFL_E_UNKNOWN_MACHINE;
-      }
-  }
 
   size_t nrels = shdr->sh_size / shdr->sh_entsize;
   size_t complete = 0;
@@ -459,10 +461,10 @@ relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
 	GElf_Rel rel_mem, *r = gelf_getrel (reldata, relidx, &rel_mem);
 	if (r == NULL)
 	  return DWFL_E_LIBELF;
-	result = relocate (r->r_offset, NULL,
+	result = relocate (mod, relocated, ehdr, reloc_symtab, tdata, r->r_offset, NULL,
 			   GELF_R_TYPE (r->r_info),
 			   GELF_R_SYM (r->r_info));
-	check_badreltype ();
+	check_badreltype (mod, &first_badreltype, &result);
 	if (partial)
 	  switch (result)
 	    {
@@ -488,10 +490,10 @@ relocate_section (Dwfl_Module *mod, Elf *relocated, const GElf_Ehdr *ehdr,
 					       &rela_mem);
 	if (r == NULL)
 	  return DWFL_E_LIBELF;
-	result = relocate (r->r_offset, &r->r_addend,
+	result = relocate (mod, relocated, ehdr, reloc_symtab, tdata, r->r_offset, &r->r_addend,
 			   GELF_R_TYPE (r->r_info),
 			   GELF_R_SYM (r->r_info));
-	check_badreltype ();
+	check_badreltype (mod, &first_badreltype, &result);
 	if (partial)
 	  switch (result)
 	    {

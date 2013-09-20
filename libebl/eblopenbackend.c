@@ -197,7 +197,7 @@ static bool default_object_note (const char *name, uint32_t type,
 static bool default_debugscn_p (const char *name);
 static bool default_copy_reloc_p (int reloc);
 /* ANDROID_CHANGE_BEGIN */
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(__clang__)
 static bool default_none_reloc_p (int reloc);
 static bool default_relative_reloc_p (int reloc);
 #else
@@ -432,8 +432,7 @@ ebl_openbackend (elf)
 
 /* Find backend without underlying ELF file.  */
 Ebl *
-ebl_openbackend_machine (machine)
-     GElf_Half machine;
+ebl_openbackend_machine (GElf_Half machine)
 {
   return openbackend (NULL, NULL, machine);
 }
@@ -685,7 +684,7 @@ default_copy_reloc_p (int reloc __attribute__ ((unused)))
   return false;
 }
 /* ANDROID_CHANGE_BEGIN */
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(__clang__)
 strong_alias (default_copy_reloc_p, default_none_reloc_p)
 strong_alias (default_copy_reloc_p, default_relative_reloc_p)
 #endif

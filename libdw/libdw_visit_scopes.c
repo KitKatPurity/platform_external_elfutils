@@ -109,12 +109,6 @@ __libdw_visit_scopes (depth, root, previsit, postvisit, arg)
   if (INTUSE(dwarf_child) (&root->die, &child.die) != 0)
     return -1;
 
-  inline int recurse (void)
-    {
-      return __libdw_visit_scopes (depth + 1, &child,
-				   previsit, postvisit, arg);
-    }
-
   do
     {
       child.prune = false;
@@ -134,7 +128,7 @@ __libdw_visit_scopes (depth, root, previsit, postvisit, arg)
 	  case walk:
 	    if (INTUSE(dwarf_haschildren) (&child.die))
 	      {
-		int result = recurse ();
+		int result = __libdw_visit_scopes(depth+1, &child, previsit, postvisit, arg);
 		if (result != DWARF_CB_OK)
 		  return result;
 	      }
@@ -153,7 +147,7 @@ __libdw_visit_scopes (depth, root, previsit, postvisit, arg)
 							  &attr_mem);
 	      if (INTUSE(dwarf_formref_die) (attr, &child.die) != NULL)
 		{
-		  int result = recurse ();
+		  int result = __libdw_visit_scopes(depth+1, &child, previsit, postvisit, arg);
 		  if (result != DWARF_CB_OK)
 		    return result;
 		}

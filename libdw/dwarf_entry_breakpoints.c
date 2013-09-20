@@ -55,18 +55,10 @@
 #include <stdlib.h>
 
 
-int
-dwarf_entry_breakpoints (die, bkpts)
-     Dwarf_Die *die;
-     Dwarf_Addr **bkpts;
-{
-  int nbkpts = 0;
-  *bkpts = NULL;
-
   /* Add one breakpoint location to the result vector.  */
-  inline int add_bkpt (Dwarf_Addr pc)
+  inline int add_bkpt (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Addr pc)
     {
-      Dwarf_Addr *newlist = realloc (*bkpts, ++nbkpts * sizeof newlist[0]);
+      Dwarf_Addr *newlist = realloc (*bkpts, ++(*nbkpts) * sizeof newlist[0]);
       if (newlist == NULL)
 	{
 	  free (*bkpts);
@@ -74,35 +66,22 @@ dwarf_entry_breakpoints (die, bkpts)
 	  __libdw_seterrno (DWARF_E_NOMEM);
 	  return -1;
 	}
-      newlist[nbkpts - 1] = pc;
+      newlist[*nbkpts - 1] = pc;
       *bkpts = newlist;
-      return nbkpts;
+      return *nbkpts;
     }
 
   /* Fallback result, break at the entrypc/lowpc value.  */
-  inline int entrypc_bkpt (void)
+  static inline int entrypc_bkpt (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts)
     {
       Dwarf_Addr pc;
-      return INTUSE(dwarf_entrypc) (die, &pc) < 0 ? -1 : add_bkpt (pc);
-    }
-
-  /* Fetch the CU's line records to look for this DIE's addresses.  */
-  Dwarf_Die cudie = CUDIE (die->cu);
-  Dwarf_Lines *lines;
-  size_t nlines;
-  if (INTUSE(dwarf_getsrclines) (&cudie, &lines, &nlines) < 0)
-    {
-      int error = INTUSE (dwarf_errno) ();
-      if (error == DWARF_E_NO_DEBUG_LINE)
-	return entrypc_bkpt ();
-      __libdw_seterrno (error);
-      return -1;
+      return INTUSE(dwarf_entrypc) (die, &pc) < 0 ? -1 : add_bkpt (die, bkpts, nbkpts, pc);
     }
 
   /* Search a contiguous PC range for prologue-end markers.
      If DWARF, look for proper markers.
      Failing that, if ADHOC, look for the ad hoc convention.  */
-  inline int search_range (Dwarf_Addr low, Dwarf_Addr high,
+  inline int search_range (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Lines *lines, size_t nlines, Dwarf_Addr low, Dwarf_Addr high,
 			   bool dwarf, bool adhoc)
     {
       size_t l = 0, u = nlines;
@@ -126,17 +105,40 @@ dwarf_entry_breakpoints (die, bkpts)
 	  if (dwarf)
 	    for (size_t i = l; i < u && lines->info[i].addr < high; ++i)
 	      if (lines->info[i].prologue_end
-		  && add_bkpt (lines->info[i].addr) < 0)
+		  && add_bkpt (die, bkpts, nbkpts, lines->info[i].addr) < 0)
 		return -1;
 	  if (adhoc && nbkpts == 0)
 	    while (++l < nlines && lines->info[l].addr < high)
 	      if (!lines->info[l].end_sequence)
-		return add_bkpt (lines->info[l].addr);
-	  return nbkpts;
+		return add_bkpt (die, bkpts, nbkpts, lines->info[l].addr);
+	  return *nbkpts;
 	}
       __libdw_seterrno (DWARF_E_INVALID_DWARF);
       return -1;
     }
+
+
+int
+dwarf_entry_breakpoints (die, bkpts)
+     Dwarf_Die *die;
+     Dwarf_Addr **bkpts;
+{
+  int nbkpts = 0;
+  *bkpts = NULL;
+
+  /* Fetch the CU's line records to look for this DIE's addresses.  */
+  Dwarf_Die cudie = CUDIE (die->cu);
+  Dwarf_Lines *lines;
+  size_t nlines;
+  if (INTUSE(dwarf_getsrclines) (&cudie, &lines, &nlines) < 0)
+    {
+      int error = INTUSE (dwarf_errno) ();
+      if (error == DWARF_E_NO_DEBUG_LINE)
+	return entrypc_bkpt (die, bkpts, &nbkpts);
+      __libdw_seterrno (error);
+      return -1;
+    }
+
 
   /* Search each contiguous address range for DWARF prologue_end markers.  */
 
@@ -149,14 +151,14 @@ dwarf_entry_breakpoints (die, bkpts)
 
   /* Most often there is a single contiguous PC range for the DIE.  */
   if (offset == 1)
-    return search_range (begin, end, true, true) ?: entrypc_bkpt ();
+    return search_range (die, bkpts, &nbkpts, lines, nlines, begin, end, true, true) ?: entrypc_bkpt (die, bkpts, &nbkpts);
 
   Dwarf_Addr lowpc = (Dwarf_Addr) -1l;
   Dwarf_Addr highpc = (Dwarf_Addr) -1l;
   while (offset > 0)
     {
       /* We have an address range entry.  */
-      if (search_range (begin, end, true, false) < 0)
+      if (search_range (die, bkpts, &nbkpts, lines, nlines, begin, end, true, false) < 0)
 	return -1;
 
       if (begin < lowpc)
@@ -173,6 +175,6 @@ dwarf_entry_breakpoints (die, bkpts)
      fall back to just using the entrypc value.  */
   return (nbkpts
 	  ?: (lowpc == (Dwarf_Addr) -1l ? 0
-	      : search_range (lowpc, highpc, false, true))
-	  ?: entrypc_bkpt ());
+	      : search_range (die, bkpts, &nbkpts, lines, nlines, lowpc, highpc, false, true))
+	  ?: entrypc_bkpt (die, bkpts, &nbkpts));
 }
