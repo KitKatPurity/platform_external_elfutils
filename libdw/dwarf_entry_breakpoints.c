@@ -56,7 +56,7 @@
 
 
   /* Add one breakpoint location to the result vector.  */
-  inline int add_bkpt (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Addr pc)
+  inline int add_bkpt (Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Addr pc)
     {
       Dwarf_Addr *newlist = realloc (*bkpts, ++(*nbkpts) * sizeof newlist[0]);
       if (newlist == NULL)
@@ -75,7 +75,7 @@
   static inline int entrypc_bkpt (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts)
     {
       Dwarf_Addr pc;
-      return INTUSE(dwarf_entrypc) (die, &pc) < 0 ? -1 : add_bkpt (die, bkpts, nbkpts, pc);
+      return INTUSE(dwarf_entrypc) (die, &pc) < 0 ? -1 : add_bkpt (bkpts, nbkpts, pc);
     }
 
   /* Search a contiguous PC range for prologue-end markers.
@@ -105,12 +105,12 @@
 	  if (dwarf)
 	    for (size_t i = l; i < u && lines->info[i].addr < high; ++i)
 	      if (lines->info[i].prologue_end
-		  && add_bkpt (die, bkpts, nbkpts, lines->info[i].addr) < 0)
+		  && add_bkpt (bkpts, nbkpts, lines->info[i].addr) < 0)
 		return -1;
 	  if (adhoc && nbkpts == 0)
 	    while (++l < nlines && lines->info[l].addr < high)
 	      if (!lines->info[l].end_sequence)
-		return add_bkpt (die, bkpts, nbkpts, lines->info[l].addr);
+		return add_bkpt (bkpts, nbkpts, lines->info[l].addr);
 	  return *nbkpts;
 	}
       __libdw_seterrno (DWARF_E_INVALID_DWARF);
