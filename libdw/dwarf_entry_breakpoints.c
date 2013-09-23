@@ -81,7 +81,7 @@
   /* Search a contiguous PC range for prologue-end markers.
      If DWARF, look for proper markers.
      Failing that, if ADHOC, look for the ad hoc convention.  */
-  inline int search_range (Dwarf_Die *die, Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Lines *lines, size_t nlines, Dwarf_Addr low, Dwarf_Addr high,
+  inline int search_range (Dwarf_Addr **bkpts, int *nbkpts, Dwarf_Lines *lines, size_t nlines, Dwarf_Addr low, Dwarf_Addr high,
 			   bool dwarf, bool adhoc)
     {
       size_t l = 0, u = nlines;
@@ -151,14 +151,14 @@ dwarf_entry_breakpoints (die, bkpts)
 
   /* Most often there is a single contiguous PC range for the DIE.  */
   if (offset == 1)
-    return search_range (die, bkpts, &nbkpts, lines, nlines, begin, end, true, true) ?: entrypc_bkpt (die, bkpts, &nbkpts);
+    return search_range (bkpts, &nbkpts, lines, nlines, begin, end, true, true) ?: entrypc_bkpt (die, bkpts, &nbkpts);
 
   Dwarf_Addr lowpc = (Dwarf_Addr) -1l;
   Dwarf_Addr highpc = (Dwarf_Addr) -1l;
   while (offset > 0)
     {
       /* We have an address range entry.  */
-      if (search_range (die, bkpts, &nbkpts, lines, nlines, begin, end, true, false) < 0)
+      if (search_range (bkpts, &nbkpts, lines, nlines, begin, end, true, false) < 0)
 	return -1;
 
       if (begin < lowpc)
@@ -175,6 +175,6 @@ dwarf_entry_breakpoints (die, bkpts)
      fall back to just using the entrypc value.  */
   return (nbkpts
 	  ?: (lowpc == (Dwarf_Addr) -1l ? 0
-	      : search_range (die, bkpts, &nbkpts, lines, nlines, lowpc, highpc, false, true))
+	      : search_range (bkpts, &nbkpts, lines, nlines, lowpc, highpc, false, true))
 	  ?: entrypc_bkpt (die, bkpts, &nbkpts));
 }
